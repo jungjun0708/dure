@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import datetime as dt
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,6 +18,14 @@ SPEC.loader.exec_module(DOCS_CHECK)
 
 
 class DocumentationLinkCheckTests(unittest.TestCase):
+    def _run_cli(self, root: Path, today: str, *args: str):
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), "--root", str(root), "--today", today, *args],
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+        )
+
     def test_accepts_existing_relative_markdown_and_image_links(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -88,12 +98,55 @@ class DocumentationLinkCheckTests(unittest.TestCase):
                 "# Guide\n\n기준일: 2026-01-01\n", encoding="utf-8"
             )
 
-            errors = DOCS_CHECK.check_document_freshness(
+            warnings = DOCS_CHECK.check_document_freshness(
                 root, today=dt.date(2026, 7, 22), max_age_days=90
             )
 
-        self.assertEqual(len(errors), 1)
-        self.assertIn("older than 90 days", errors[0])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("older than 90 days", warnings[0])
+
+    def test_cli_document_age_only_produces_warnings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "README.md").write_text(
+                "# Guide\n\n작성일: 2026-01-01\n", encoding="utf-8"
+            )
+            cases = (
+                ("2026-04-01", (), False),  # Exactly 90 days old.
+                ("2026-04-02", (), True),
+                ("2026-01-03", ("--max-document-age-days", "1"), True),
+            )
+            for today, args, should_warn in cases:
+                with self.subTest(today=today, args=args):
+                    result = self._run_cli(root, today, *args)
+
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("documentation links: OK", result.stdout)
+                    if should_warn:
+                        self.assertIn("warning: README.md:3: document date", result.stderr)
+                    else:
+                        self.assertEqual(result.stderr, "")
+
+    def test_cli_link_errors_still_fail_alongside_age_warnings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "guide.md").write_text("# Guide\n", encoding="utf-8")
+            cases = (
+                ("missing.md", "missing relative link missing.md"),
+                ("guide.md#missing", "missing anchor missing"),
+            )
+            for target, expected_error in cases:
+                with self.subTest(target=target):
+                    (root / "README.md").write_text(
+                        f"# Home\n\n기준일: 2026-01-01\n\n[guide]({target})\n",
+                        encoding="utf-8",
+                    )
+                    result = self._run_cli(root, "2026-04-02")
+
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertIn("warning: README.md:3: document date", result.stderr)
+                    self.assertIn(expected_error, result.stderr)
+                    self.assertNotIn("documentation links: OK", result.stdout)
 
     def test_requires_current_package_evidence_and_release_references(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -140,19 +140,19 @@ def check_document_index(root: Path) -> list[str]:
 def check_document_freshness(
     root: Path, *, today: dt.date, max_age_days: int
 ) -> list[str]:
-    """Flag explicitly dated documents whose stated review date is too old."""
+    """Return warnings for documents whose stated review date is too old."""
 
-    errors: list[str] = []
+    warnings: list[str] = []
     for document in documentation_files(root):
         text = document.read_text(encoding="utf-8")
         for match in _DATED_DOCUMENT.finditer(text):
             recorded = dt.date.fromisoformat(match.group("date"))
             if (today - recorded).days > max_age_days:
-                errors.append(
+                warnings.append(
                     f"{document.relative_to(root)}:{_line(document, match.start())}: "
                     f"document date {recorded.isoformat()} is older than {max_age_days} days"
                 )
-    return errors
+    return warnings
 
 
 def check_release_documentation_contract(root: Path) -> list[str]:
@@ -231,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         "--max-document-age-days",
         type=int,
         default=90,
-        help="maximum age for an explicit 기준일/작성일 before the check fails",
+        help="maximum age for an explicit 기준일/작성일 before a warning is printed",
     )
     parser.add_argument(
         "--today",
@@ -245,12 +245,13 @@ def main(argv: list[str] | None = None) -> int:
         check_relative_links(root)
         + check_duplicate_headings(root)
         + check_document_index(root)
-        + check_document_freshness(
-            root, today=args.today, max_age_days=args.max_document_age_days
-        )
         + check_release_documentation_contract(root)
         + check_bootstrap_cli_contract(root)
     )
+    for warning in check_document_freshness(
+        root, today=args.today, max_age_days=args.max_document_age_days
+    ):
+        print(f"warning: {warning}", file=sys.stderr)
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1

@@ -61,6 +61,10 @@ python3 scripts/check_docs.py
 가용성이나 문서 내용의 사실성은 검사하지 않으므로, 지원 범위·CLI/API·보안 경계가 바뀌면 관련
 운영 문서를 사람이 함께 검토해야 합니다.
 
+문서의 `기준일:` 또는 `작성일:`이 90일을 넘으면 `warning:` 메시지를 출력합니다. 날짜 경고만으로는
+검사를 실패시키지 않으며, 경고 기준은 `--max-document-age-days`로 조정할 수 있습니다. 링크·앵커,
+중복 제목, 문서 목차, 릴리스·CLI 문서 참조 오류는 기존처럼 종료 코드 `1`로 실패 처리합니다.
+
 실제 GPU·네트워크·NCCL 수용 결과는 절차 문서에 성공으로 덮어쓰지 않습니다. `docs/release-evidence/`
 아래에 version별 기록을 만들고 `PASSED`, `FAILED`, `NOT_RUN`을 명시합니다. credential, token,
 private URL, raw prompt, Docker command, host path와 원본 로그는 기록하지 않습니다. 모델·OS·GPU·TP/PP
